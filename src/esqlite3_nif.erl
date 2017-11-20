@@ -24,6 +24,7 @@
 -export([start/0,
          open/4,
          exec/4,
+         backup/4,
          changes/3,
          insert/4,
          prepare/4,
@@ -73,6 +74,15 @@ open(_Db, _Ref, _Dest, _Filename) ->
 %%  @spec exec(connection(), Ref::reference(), Dest::pid(), string()) -> ok | {error, message()}
 exec(_Db, _Ref, _Dest, _Sql) ->
     erlang:nif_error(nif_library_not_loaded).
+
+%% @doc Backup database to a new file.
+%%
+%% Sends an asynchronous backup command over the connection and returns
+%% ok immediately.
+%%
+%%  @spec backup(connection(), reference(), pid(), string()) -> ok | {error, message()}
+backup(_Db, _Ref, _Dest, _Filename) ->
+  erlang:nif_error(nif_library_not_loaded).
 
 %% @doc Get the number of affected rows of last statement
 %%

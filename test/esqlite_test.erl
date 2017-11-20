@@ -10,6 +10,25 @@ open_single_database_test() ->
     {ok, _C1} = esqlite3:open("test.db"),
     ok.
 
+open_close_database_test() ->
+    file:delete("test.db"),
+    {ok, Db} = esqlite3:open("test.db"),
+    esqlite3:exec("begin;", Db),
+    esqlite3:exec("create table test_table(one varchar(10), two int);", Db),
+    {ok, Statement} = esqlite3:prepare("insert into test_table values(\"one\", 2)", Db),
+    
+    '$done' = esqlite3:step(Statement),
+    {ok, 1} = esqlite3:changes(Db),
+
+    ok = esqlite3:exec(["insert into test_table values(", "\"hello4\"", ",", "13" ");"], Db), 
+
+    %% Check if the values are there.
+    [{<<"one">>, 2}, {<<"hello4">>, 13}] = esqlite3:q("select * from test_table order by two", Db),
+    esqlite3:exec("commit;", Db),
+    esqlite3:close(Db),
+    {ok, _} = esqlite3:open("test.db"),
+    ok.
+
 open_multiple_same_databases_test() ->
     {ok, _C1} = esqlite3:open("test.db"),
     {ok, _C2} = esqlite3:open("test.db"),
@@ -345,6 +364,23 @@ sqlite_source_id_test() ->
     {ok, Stmt} = esqlite3:prepare("select sqlite_source_id() as sqlite_source_id;", Db),
     {sqlite_source_id} =  esqlite3:column_names(Stmt),
     ?assertEqual({row, {<<"2017-08-24 16:21:36 8d3a7ea6c5690d6b7c3767558f4f01b511c55463e3f9e64506801fe9b74dce34">>}}, esqlite3:step(Stmt)),
+    ok.
+
+backup_test() ->
+    file:delete("from.db"),
+    file:delete("to.db"),
+    {ok, Db} = esqlite3:open("from.db"),
+    [] = esqlite3:q("create table test(one, two, three)", Db),
+    ok = esqlite3:exec(["insert into test values(1,2,3);"], Db),
+    ?assertMatch(ok, esqlite3:backup("to.db", Db)),
+    ?assertMatch(true, filelib:is_file("to.db")),
+    esqlite3:close(Db),
+    {ok, Db1} = esqlite3:open("to.db"),
+    {ok, Stmt} = esqlite3:prepare("select * from test", Db1),
+
+    ?assertMatch({row, {1,2,3}}, esqlite3:step(Stmt)),
+    ?assertMatch('$done', esqlite3:step(Stmt)),
+    esqlite3:close(Db1),
     ok.
     
 garbage_collect_test() ->

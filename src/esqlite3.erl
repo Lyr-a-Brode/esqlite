@@ -23,6 +23,7 @@
 %% higher-level export
 -export([open/1, open/2,
          exec/2, exec/3,
+         backup/2, backup/3,
          changes/1, changes/2,
          insert/2,
          prepare/2, prepare/3,
@@ -226,6 +227,19 @@ exec(Sql, Params, {connection, _, _}=Connection, Timeout) when is_list(Params) -
     bind(Statement, Params),
     step(Statement, Timeout).
 
+%% @doc Backup database to a new destination file.
+%%
+%% @spec backup(iolist(), connection()) -> ok |  {error, error_message()}
+backup(Filename, Connection) ->
+  backup(Filename, Connection, ?DEFAULT_TIMEOUT).
+
+%% @doc Backup
+%%
+%% @spec backup(iolist(), connection(), timeout()) -> ok | {error, error_message()}
+backup(Filename, {connection, _Ref, Connection}, Timeout) ->
+  Ref = make_ref(),
+  ok = esqlite3_nif:backup(Connection, Ref, self(), Filename),
+  receive_answer(Ref, Timeout).
 
 %% @doc Return the number of affected rows of last statement.
 changes(Connection) ->

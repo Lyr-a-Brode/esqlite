@@ -51,6 +51,7 @@ typedef enum {
     cmd_unknown,
     cmd_open,
     cmd_exec,
+    cmd_backup,
     cmd_changes,
     cmd_prepare,
     cmd_bind,
@@ -263,6 +264,53 @@ do_open(ErlNifEnv *env, esqlite_connection *db, const ERL_NIF_TERM arg)
     }
 
     sqlite3_busy_timeout(db->db, 2000);
+
+    return make_atom(env, "ok");
+}
+
+static ERL_NIF_TERM
+do_backup(ErlNifEnv *env, esqlite_connection *conn, const ERL_NIF_TERM arg)
+{
+    char filename[MAX_PATHNAME];
+    unsigned int size;
+    int rc;
+    ERL_NIF_TERM error;
+
+    sqlite3 *backup_db;
+
+    sqlite3_backup *backup;
+
+    size = enif_get_string(env, arg, filename, MAX_PATHNAME, ERL_NIF_LATIN1);
+    if(size <= 0)
+        return make_error_tuple(env, "invalid_filename");
+
+    /* Open the database.
+     */
+    rc = sqlite3_open(filename, &backup_db);
+    if(rc != SQLITE_OK) {
+        error = make_error_tuple(env, "error_opening_backup");
+	    //error = make_sqlite3_error_tuple(env, rc, conn->db);
+	    sqlite3_close_v2(backup_db);
+
+	    return error;
+    }
+
+    backup = sqlite3_backup_init(backup_db, "main", conn->db, "main");
+    if(backup) {
+        sqlite3_backup_step(backup, -1);
+        sqlite3_backup_finish(backup);
+    }
+
+    rc = sqlite3_errcode(backup_db);
+    if(rc != SQLITE_OK) {
+        error = make_error_tuple(env, "error_backuping");
+        //error = make_sqlite3_error_tuple(env, rc, conn->db);
+        sqlite3_close_v2(backup_db);
+
+        return error;
+    }
+
+    sqlite3_close_v2(backup_db);
 
     return make_atom(env, "ok");
 }
@@ -628,6 +676,8 @@ evaluate_command(esqlite_command *cmd, esqlite_connection *conn)
 	    return do_exec(cmd->env, conn, cmd->arg);
     case cmd_changes:
 	    return do_changes(cmd->env, conn, cmd->arg);
+	case cmd_backup:
+    	return do_backup(cmd->env, conn, cmd->arg);
     case cmd_prepare:
 	    return do_prepare(cmd->env, conn, cmd->arg);
     case cmd_step:
@@ -781,6 +831,38 @@ esqlite_exec(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
      
     /* command */
     cmd->type = cmd_exec;
+    cmd->ref = enif_make_copy(cmd->env, argv[1]);
+    cmd->pid = pid;
+    cmd->arg = enif_make_copy(cmd->env, argv[3]);
+
+    return push_command(env, db, cmd);
+}
+
+/*
+ * Backup database
+ */
+static ERL_NIF_TERM
+esqlite_backup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+    esqlite_connection *db;
+    esqlite_command *cmd = NULL;
+    ErlNifPid pid;
+
+    if(argc != 4)
+	    return enif_make_badarg(env);
+    if(!enif_get_resource(env, argv[0], esqlite_connection_type, (void **) &db))
+	    return enif_make_badarg(env);
+    if(!enif_is_ref(env, argv[1]))
+	    return make_error_tuple(env, "invalid_ref");
+    if(!enif_get_local_pid(env, argv[2], &pid))
+	    return make_error_tuple(env, "invalid_pid");
+
+    cmd = command_create();
+    if(!cmd)
+	    return make_error_tuple(env, "command_create_failed");
+
+    /* command */
+    cmd->type = cmd_backup;
     cmd->ref = enif_make_copy(cmd->env, argv[1]);
     cmd->pid = pid;
     cmd->arg = enif_make_copy(cmd->env, argv[3]);
@@ -1130,6 +1212,7 @@ static ErlNifFunc nif_funcs[] = {
     {"start", 0, esqlite_start},
     {"open", 4, esqlite_open},
     {"exec", 4, esqlite_exec},
+    {"backup", 4, esqlite_backup},
     {"changes", 3, esqlite_changes},
     {"prepare", 4, esqlite_prepare},
     {"insert", 4, esqlite_insert},
