@@ -7,4 +7,5 @@ priv
 *.o
 *~
 _build
+*.db
 c_src/*.d
